@@ -1,0 +1,66 @@
+#!/bin/sh
+
+# デフォルトのインストール場所
+PREFIX="/usr/local"
+BINDIR="$PREFIX/bin"
+SHAREDIR="$PREFIX/share/bastix"
+
+echo "Configuring Bastix installation..."
+
+# 引数をパース
+while [ "$#" -gt 0 ]; do
+  case $1 in
+    --prefix=*) PREFIX="${1#*=}" ;;
+    *) echo "Unknown option: $1" ;;
+  esac
+  shift
+done
+
+# ディレクトリを調整
+BINDIR="$PREFIX/bin"
+SHAREDIR="$PREFIX/share/bastix"
+
+# 必要なコマンドのチェック
+echo "Checking dependencies..."
+MISSING=0
+for cmd in python3 doas qt-sudo; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Error: $cmd is not installed."
+    MISSING=1
+  fi
+done
+
+if [ "$MISSING" -eq 1 ]; then
+  echo "Please install the missing dependencies and try again."
+  echo "pkg install python3 doas qt-sudo"
+  exit 1
+fi
+
+# Python ライブラリのチェック（PyQt5）
+if ! python3 -c "import PyQt5" >/dev/null 2>&1; then
+  echo "Error: PyQt5 is not installed for Python3."
+  echo "Please install it using 'pkg install py311-qt5-pyqt py311-PyQt5-sip' and try again."
+  exit 1
+fi
+
+if ! python3 -c "import BeautifulSoup" >/dev/null 2>&1; then
+  echo "Error: BeautifulSoup is not installed for Python3."
+  echo "Please install it using 'pkg install py311-beautifulsoup' and try again."
+  exit 1
+fi
+
+if ! python3 -c "import requests" >/dev/null 2>&1; then
+  echo "Error: requests is not installed for Python3."
+  echo "Please install it using 'pkg install py311-requests' and try again."
+  exit 1
+fi
+
+# 設定ファイルの出力
+echo "Generating config.mk..."
+cat <<EOF > config.mk
+PREFIX = $PREFIX
+BINDIR = $BINDIR
+SHAREDIR = $SHAREDIR
+EOF
+
+echo "Configuration complete. Run 'make' to build and install."
