@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Name=Bastix
+Comment=GUI tool for managing FreeBSD Bastille Jails
+Exec=bastix
+Icon=bastix
+Terminal=false
+Type=Application
+Categories=Utility;System;

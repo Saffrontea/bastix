@@ -3,7 +3,7 @@
 PYTHON_SCRIPT=PLACEHOLDER_PATH
 
 if [ -n "$DISPLAY" ] && command -v xdg-open >/dev/null && command -v qt-sudo >/dev/null; then
-  qt-sudo sh -c "python3 $$PYTHON_SCRIPT"
+  qt-sudo sh -c "python3 $PYTHON_SCRIPT"
 else
-  doas sh -c "python3 $$PYTHON_SCRIPT"
+  doas sh -c "python3 $PYTHON_SCRIPT"
 fi

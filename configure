@@ -43,7 +43,7 @@ if ! python3 -c "import PyQt5" >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! python3 -c "import BeautifulSoup" >/dev/null 2>&1; then
+if ! python3 -c "from bs4 import BeautifulSoup" >/dev/null 2>&1; then
   echo "Error: BeautifulSoup is not installed for Python3."
   echo "Please install it using 'pkg install py311-beautifulsoup' and try again."
   exit 1
@@ -63,4 +63,4 @@ BINDIR = $BINDIR
 SHAREDIR = $SHAREDIR
 EOF
 
-echo "Configuration complete. Run 'make' to build and install."
+echo "Configuration complete. Run 'make' to install."
