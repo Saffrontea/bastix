@@ -1,6 +1,7 @@
 import sys
 import os
 import subprocess
+import re
 from PyQt5.QtCore import Qt,QTimer,QPoint,QThread,pyqtSignal
 from PyQt5.QtWidgets import (QApplication, QWidget, QPushButton, QVBoxLayout, QTextEdit,QHBoxLayout,QMenu,QSplitter,
                              QMessageBox,QListWidget, QTableWidget, QTableWidgetItem,QLabel,QAction,QMenuBar,QMainWindow)
@@ -464,10 +465,33 @@ class BastilleGUI(QMainWindow):
         # 起動時にリストを取得＆表示
         self.list_jails()
 
+    def get_bastille_version(self):
+        try:
+            result = subprocess.run(['bastille', '--version'],
+                                    capture_output=True,
+                                    text=True,
+                                    check=True)
+            version_text = result.stdout.strip()
+            match = re.match(r'(\d+)\.(\d+)\.(\d+)', version_text)
+            if match:
+                major, minor, build = match.groups()
+                return {
+                    'major': int(major),
+                    'minor': int(minor),
+                    'build': int(build),
+                    'text': version_text
+                }
+            return {'major': 0, 'minor': 0, 'build': 0, 'text': version_text}
+        except (subprocess.SubprocessError, OSError):
+            return {'major': 0, 'minor': 0, 'build': 0, 'text': 'unknown'}
+
+
     def show_about_dialog(self):
         """About ダイアログを表示"""
+        version_text = self.get_bastille_version()['text']
         QMessageBox.about(self, "About Bastix",
-                          "Bastix v1.0\n\n"
+                          "Bastix v1.1\n\n"
+                          f"Running with bastille version: {version_text}\n\n"
                           "A GUI for managing Bastille configurations and jails on FreeBSD.\n"
                           "Features include jail creation,destroy,start/stop,console login.\n\n"
                           "Author: Yuto Yamada(y.saffrontea@gmail.com)\n"
@@ -525,37 +549,76 @@ class BastilleGUI(QMainWindow):
     @staticmethod
     def parse_jail_list(output):
 
-        # 出力全体を行単位に分割
+        try:
+            result = subprocess.run(['bastille', '--version'],
+                                    capture_output=True,
+                                    text=True,
+                                    check=True)
+            version_text = result.stdout.strip()
+            match = re.match(r'(\d+)\.(\d+)\.(\d+)', version_text)
+            if match:
+                major, minor = int(match.group(1)), int(match.group(2))
+            else:
+                major, minor = 0, 0
+        except (subprocess.SubprocessError, OSError):
+            major, minor = 0, 0
+
         lines = output.strip().split("\n")
 
-        # ヘッダー部分（1行目）はスキップ
         if len(lines) <= 1:
             return []
 
-        data_lines = lines[1:]  # 2行目以降がデータ
+        data_lines = lines[1:]
 
-        # データ行を解析して辞書形式で格納
+        # Version Check
+        if major == 0 and minor <= 13:
+            columns = [
+                "JID",
+                "State",
+                "IP Address",
+                "Published Ports",
+                "Hostname",
+                "Release"
+            ]
+        else:
+            columns = [
+                "JID",
+                "Boot",
+                "Prio",
+                "State",
+                "IP Address",
+                "Published Ports",
+                "Hostname",
+                "Release"
+            ]
+
         jail_list = []
         for line in data_lines:
             # 各フィールドをスペースで分割
             fields = line.split()
 
             # 必要なフィールドが揃っていない場合はスキップ
-            if len(fields) < 7:
+            min_fields = len(columns)
+            if len(fields) < min_fields:
                 continue
 
             # フィールドを辞書形式で格納
-            jail_list.append({
-                "JID": fields[0],
-                "State": fields[1],
-                "IP Address": fields[2],
-                "Published Ports": fields[3],
-                "Hostname": fields[4],
-                "Release": fields[5],
-                "Path": " ".join(fields[6:])  # Pathの部分はスペースが含まれる可能性を考慮
-            })
+            jail_data = {}
+            for i, column in enumerate(columns):
+                if i < len(fields):
+                    jail_data[column] = fields[i]
 
+            path_index = len(columns)
+            if len(fields) > path_index:
+                jail_data["Path"] = " ".join(fields[path_index:])
+            else:
+                jail_data["Path"] = ""
+
+            jail_list.append(jail_data)
         return jail_list
+
+
+
 
     def list_jails(self):
         result = subprocess.run(["bastille", "list", "-a"], capture_output=True, text=True)
@@ -632,20 +695,37 @@ class BastilleGUI(QMainWindow):
 
 
     def display_jail_details(self, row, column):
-        # クリックされた行番号から詳細を取得 & 表示
-        jail = self.jails[row]
-        details = (
-            f"<b>Infomation of {jail['Hostname']}:</b><br><br>"
-            f"<b>JID:</b> {jail['JID']}<br>"
-            f"<b>State:</b> {jail['State']}<br>"
-            f"<b>IP Address:</b> {jail['IP Address']}<br>"
-            f"<b>Published Ports:</b> {jail['Published Ports']}<br>"
-            f"<b>Hostname:</b> {jail['Hostname']}<br>"
-            f"<b>Release:</b> {jail['Release']}<br>"
-            f"<b>Path:</b> {jail['Path']}<br>"
+        if row < 0 or row >= len(self.jails):
+            return
 
-        )
-        self.output.setHtml(details)
+        jail = self.jails[row]
+
+        details = f"<b>Information of {jail.get('Hostname', 'Unknown')}:</b><br><br>"
+
+        primary_fields = [
+            "JID", "Boot", "Prio", "State", "IP Address",
+            "Published Ports", "Hostname", "Release", "Path"
+        ]
+
+        for field in primary_fields:
+            if field in jail:
+                value = jail[field]
+                if value == "" or value == "-":
+                    value = "<i>None</i>"
+                details += f"<b>{field}:</b> {value}<br>"
+
+        # その他の追加フィールド（バージョンによって追加される可能性のあるもの）
+        other_fields = [f for f in jail.keys() if f not in primary_fields]
+        for field in sorted(other_fields):  # アルファベット順に表示
+            value = jail[field]
+            if value == "" or value == "-":
+                value = "<i>None</i>"
+            details += f"<b>{field}:</b> {value}<br>"
+
+        # 詳細情報を表示（既存のUIコンポーネントに応じて設定）
+        if hasattr(self, 'output') and self.output is not None:
+            self.output.setHtml(details)
+
 
     def adjust_table_column_width(self):
         """テーブルのカラム幅を調整"""
